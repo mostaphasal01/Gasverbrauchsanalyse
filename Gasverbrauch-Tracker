@@ -1,0 +1,122 @@
+using OxyPlot;
+using OxyPlot.Axes;
+using OxyPlot.Series;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
+
+namespace bwi40322
+{
+    public class Program
+    {
+        static void Main(string[] args)
+        {
+            var url = "https://cbrell.de/bwi403/demo/ZaehlerstandExport.csv";
+            // Der Pfad der Datei program.cs ermitteln
+            var directory = System.AppContext.BaseDirectory.Split(Path.DirectorySeparatorChar);
+            var slice = new ArraySegment<string>(directory, 0, directory.Length - 4);
+            var path = Path.Combine(slice.ToArray());
+
+            // Die csv-Datei aus dem oben genannten URL herunterladen und im Verzeichnis speichern
+            WebClient client = new WebClient();
+            client.DownloadFile(url, path + "/ein.csv");
+
+            // Erstellung einer Text Datei für die Kennzahlen
+            StreamWriter sw;
+            sw = File.AppendText(path + "/Kennzahlen.txt");
+
+            // Die Daten aus dem csv-Datei "ein.csv" auslesen und in einer Variabel speichern
+            string[] lines = File.ReadAllLines(path + "/ein.csv");
+
+            // Erstellung einer Dictionary, wo die ausgewählte Kennzahlen gespeichert werden
+            var result = new Dictionary<string, string>();
+
+            // Die Trennung der Überschriften entsprechend die CSV Format
+            var header = lines[0].Split(';');
+
+            // Auswahl der Zeitpunkt und Gasverbrauch Überschriften, da der Program mit diesen beiden Kennzahlen arbeiten wird 
+            sw.WriteLine(header[0] + " , " + header[2]);
+            Console.WriteLine(header[0] + " , " + header[2]);
+
+            // Jetzt Die Überschriften ignorieren, um mit den Werten weiter arbeiten zu können
+            lines = lines.Skip(1).ToArray();
+
+            // Iterierung durch die Werte der csv Datei
+            foreach (string line in lines)
+            {
+                // Die Trennung der Werten entsprechend die CSV Format
+                string[] allColumns = line.Split(';');
+
+                // Umwandlung der Format der Datumsangabe aus der Werte der Zeitpunkt
+                var day = DateTime.Parse(allColumns[0]).ToString("dd/MM/yyyy");
+
+                if (result.Any())
+                {
+                    // Prüfen, ob es bei den Daten Lücken gibt
+                    if (string.IsNullOrWhiteSpace(allColumns[2]))
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        // Die Duplikat der Tagen igonieren, da wir nur für jeden Tag einen Wert haben möchten
+                        if (day == result.Keys.Last())
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                            result.Add(day, allColumns[2]);
+                            sw.WriteLine(day + " , " + allColumns[2]);
+                            Console.WriteLine(day + " , " + allColumns[2]);
+                        }
+                    }
+                }
+                else
+                {
+                    result.Add(day, allColumns[2]);
+                    sw.WriteLine(day + " , " + allColumns[2]);
+                    Console.WriteLine(day + " , " + allColumns[2]);
+                }
+
+            }
+            sw.Close();
+
+            // **** Für die Datevisualisierung als SVG Datei wurde die Bibliothek OxyPlot genutzt **** // *** Bitte die Package OxyPlot installieren !!
+
+            // Ein neues PlotModel-Objekt erstellen
+            var model = new PlotModel { Title = "Verbrauch von Gas in cbm kumuliert" };
+            var series = new FunctionSeries { Title = "Daten" };
+
+            // ein neues DateTimeAxis-Objekt für die x-Achse erstellen
+            DateTimeAxis xAxis = new DateTimeAxis
+            {
+                Position = AxisPosition.Bottom,
+                StringFormat = "dd/MM/yyyy",
+                MinorIntervalType = DateTimeIntervalType.Days,
+                IntervalType = DateTimeIntervalType.Days,
+                MajorGridlineStyle = LineStyle.Solid,
+                MinorGridlineStyle = LineStyle.None
+            };
+            // Die Datenpunkte zur LineSeries hinzufügen
+            foreach (var res in result)
+            {
+                var day = DateTime.Parse(res.Key);
+                series.Points.Add(new DataPoint(DateTimeAxis.ToDouble(day), double.Parse(res.Value)));
+            }
+
+            model.Series.Add(series);
+            model.Axes.Add(xAxis);
+            model.Axes.Add(new LinearAxis());
+
+            // SVG-Datei ertellen, die Format der Graph, und die Daten exportien
+            using (var stream = File.Create(path + "/zaehlerstand.svg"))
+            {   
+                var exporter = new SvgExporter { Width = 800, Height = 800 };
+                exporter.Export(model, stream);
+            }
+        }
+    }
+}
